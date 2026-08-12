@@ -46,6 +46,7 @@ import os
 import platform
 import resource
 import signal
+import subprocess
 import sys
 import time
 import traceback
@@ -111,19 +112,85 @@ def _instance_id() -> str:
     return ""
 
 
+_PROBE_SRC = """
+import json
+out = {"cuda_available": False, "device_name": "cpu", "torch_version": ""}
+try:
+    import torch
+    out["torch_version"] = torch.__version__
+    out["cuda_available"] = bool(torch.cuda.is_available())
+    if out["cuda_available"]:
+        out["device_name"] = torch.cuda.get_device_name(0)
+        out["capability"] = list(torch.cuda.get_device_capability(0))
+        out["device_total_mb"] = round(
+            torch.cuda.get_device_properties(0).total_memory / 1048576, 1
+        )
+        out["arch_list"] = list(torch.cuda.get_arch_list())
+except Exception as exc:
+    out["error"] = "%s: %s" % (type(exc).__name__, exc)
+print(json.dumps(out))
+"""
+
+
 def _torch_device_info() -> Dict[str, Any]:
-    info = {"cuda_available": False, "device_name": "cpu", "torch_version": ""}
+    """Probe the GPU in a SHORT-LIVED SUBPROCESS, never in this process.
+
+    This is not defensive style, it is a measured bug fix.  `get_device_name` /
+    `get_device_capability` create a CUDA primary context in the calling
+    process.  This runner then forks a worker pool (fork is what makes the
+    feature matrix shared copy-on-write rather than pickled per worker), and
+    **CUDA cannot be re-initialised in a forked child** -- every child dies with
+    "Cannot re-initialize CUDA in forked subprocess".
+
+    Observed live on the smoke run: chunk prim_8d24dcf3f154c775 (64 CNN/GRU/MLP/
+    Transformer configs, 8 workers, real T4) failed 64/64 configs this way, and
+    exited 3 ("every config failed") rather than crashing, so the shape of the
+    failure was total-but-quiet.
+
+    Probing out-of-process keeps this process CUDA-clean, so each forked child
+    creates its own context on first use.  That preserves BOTH the Phase 2
+    packing measurement (8 concurrent processes per T4) and copy-on-write
+    sharing of the feature matrix, which `spawn` would have cost us.
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _PROBE_SRC],
+            capture_output=True, text=True, timeout=300,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return json.loads(proc.stdout.strip().splitlines()[-1])
+        return {
+            "cuda_available": False, "device_name": "cpu", "torch_version": "",
+            "error": f"probe rc={proc.returncode}: {proc.stderr.strip()[-300:]}",
+        }
+    except Exception as exc:
+        return {
+            "cuda_available": False, "device_name": "cpu", "torch_version": "",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _assert_cuda_clean(procs: int) -> None:
+    """Refuse to fork a pool if this process already holds a CUDA context.
+
+    Belt-and-braces for the failure above: if some future edit initialises CUDA
+    in the parent, fail with the real reason instead of losing every config in
+    the chunk to an opaque per-worker error.
+    """
+    if procs <= 1:
+        return
     try:
         import torch
 
-        info["torch_version"] = torch.__version__
-        info["cuda_available"] = bool(torch.cuda.is_available())
-        if info["cuda_available"]:
-            info["device_name"] = torch.cuda.get_device_name(0)
-            info["capability"] = list(torch.cuda.get_device_capability(0))
-    except Exception as exc:  # pragma: no cover
-        info["error"] = f"{type(exc).__name__}: {exc}"
-    return info
+        if torch.cuda.is_initialized():
+            raise RuntimeError(
+                "CUDA is already initialised in the parent process; forking "
+                f"{procs} workers from here would make every worker fail with "
+                "'Cannot re-initialize CUDA in forked subprocess'. Probe the "
+                "device out-of-process (see _torch_device_info)."
+            )
+    except ImportError:
+        pass
 
 
 def preflight_rnafm(featurizer) -> Dict[str, Any]:
@@ -469,7 +536,8 @@ def run_chunk(args) -> int:
                 _init_worker(Xtr, Xte, ytr, yte, fold, seed, corrective)
                 fold_recs = [_fit_one(r) for r in g_rows]
             else:
-                ctx = mp.get_context("fork")
+                _assert_cuda_clean(procs)
+            ctx = mp.get_context("fork")
                 with ctx.Pool(
                     processes=min(procs, len(g_rows)),
                     initializer=_init_worker,

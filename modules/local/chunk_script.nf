@@ -47,6 +47,13 @@ def chunkScript(meta, chunk_json, configs_csv, task, require_cuda, params) {
         || echo "[task] nvidia-smi unavailable"
     } >> "\$LOG" 2>&1
 
+    # tee, NOT '>>': a redirect-only task publishes nothing when it fails,
+    # because publishDir does not run on a failed task.  Observed live -- a GPU
+    # chunk failed and its .command.log held one line ("FUSION_GPU_USED=false")
+    # while the real traceback sat in an unpublished file.  Teeing puts the same
+    # content in Nextflow's own .command.out, which IS retrievable for a failed
+    # task, at no cost when the task succeeds.
+    set +e
     run_chunk.py \\
         --chunk ${chunk_json} \\
         --configs ${configs_csv} \\
@@ -57,8 +64,11 @@ def chunkScript(meta, chunk_json, configs_csv, task, require_cuda, params) {
         --procs ${meta.procs} \\
         --arm ${params.arm} \\
         ${seed_flag} ${kfold_flag} ${cuda_flag} \\
-        >> "\$LOG" 2>&1
+        2>&1 | tee -a "\$LOG"
+    rc=\${PIPESTATUS[0]}
+    set -e
 
-    echo "[task] done rc=0" >> "\$LOG"
+    echo "[task] done rc=\$rc" | tee -a "\$LOG"
+    exit \$rc
     """
 }
