@@ -537,7 +537,7 @@ def run_chunk(args) -> int:
                 fold_recs = [_fit_one(r) for r in g_rows]
             else:
                 _assert_cuda_clean(procs)
-            ctx = mp.get_context("fork")
+                ctx = mp.get_context("fork")
                 with ctx.Pool(
                     processes=min(procs, len(g_rows)),
                     initializer=_init_worker,
