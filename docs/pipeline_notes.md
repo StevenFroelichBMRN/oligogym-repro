@@ -177,9 +177,36 @@ unconstrained BLAS would oversubscribe the box `procs`-fold.
   Sherwood was **exit-137 OOM-killed at 8 GB**, so its requirement is a measured
   *lower bound*, not a measurement.
 
+### Worker start method, and the memory consequence discovered in the smoke run
+
+CPU chunks fork their workers; **GPU chunks spawn them**. A forked child cannot
+use CUDA if the parent ever initialised a context, and on a real T4 the 64-config
+DL chunk failed 64/64 with `AcceleratorError: CUDA error: initialization error`
+even after the device probe was moved out-of-process. Spawn removes that failure
+class outright — the child re-imports and receives state pickled, so it has no
+inherited context. (Before that, the same chunk failed for a different reason:
+`multiprocessing.Pool` workers are *daemonic*, and `pl.Trainer` starts child
+processes, so every DL config died on `daemonic processes are not allowed to have
+children`. Both fixes are in `run_chunk.py`; the history is in
+`smoke_run_report.md` §4.)
+
+**Spawn changes the memory model, and the measurement says so.** A forked worker
+inherits the feature matrices copy-on-write; a spawned worker gets its **own
+copy**. Measured: the 64-config GPU chunk at `procs=8` peaked at
+**14,251.6 MB against its 12 GB request** and was placed only because the compute
+environment chose a larger instance. The GPU first rung is therefore **24 GB**,
+not 12 GB.
+
+Carry this forward as a live risk: GPU task RSS now scales with
+`procs × matrix size` rather than being nearly flat in it, and only one
+spawn-mode GPU chunk has been observed — on an M-tier dataset. A large-matrix GPU
+chunk at `procs=8` has never been run. If XL/L GPU chunks OOM in the sweep, the
+fix is to reduce `procs` for the GPU queue rather than to climb the ladder.
+
 ### Retry ladder
 
-`8 → 30 → 120 GB` on exit 137 (plus 104/134/139/143/247), `maxRetries = 3`, then
+CPU `8 → 30 → 120 GB`, GPU `24 → 30 → 120 GB`, on exit 137 (plus
+104/134/139/143/247), `maxRetries = 3`, then
 **`ignore`** — a chunk that still fails loses only itself, because results are
 published per chunk and the collector records the gap.
 
@@ -263,7 +290,11 @@ matrices into `H.featurize()` so that reshape logic runs identically on a hit an
 a miss — there is no second implementation of it to drift.
 
 **Verified locally:** a re-run of the same chunk against a warm cache logged
-`cache_hit=True` on 5/5 folds with `featurize_s=0.00`.
+`cache_hit=True` on 5/5 folds with `featurize_s=0.00`.  On Batch every smoke
+chunk was a cold first run, so the observed hit rate there is 0 % by
+construction; what the cloud runs verify is that the cache *stores* correctly
+(`bytes_written` non-zero, `write_errors: 0`).  The 97.6 % elimination figure is
+Phase 2's projection, not re-measured in Phase 3.
 
 ---
 
