@@ -135,22 +135,24 @@ print(json.dumps(out))
 def _torch_device_info() -> Dict[str, Any]:
     """Probe the GPU in a SHORT-LIVED SUBPROCESS, never in this process.
 
-    This is not defensive style, it is a measured bug fix.  `get_device_name` /
-    `get_device_capability` create a CUDA primary context in the calling
-    process.  This runner then forks a worker pool (fork is what makes the
-    feature matrix shared copy-on-write rather than pickled per worker), and
-    **CUDA cannot be re-initialised in a forked child** -- every child dies with
-    "Cannot re-initialize CUDA in forked subprocess".
-
-    Observed live on the smoke run: chunk prim_8d24dcf3f154c775 (64 CNN/GRU/MLP/
-    Transformer configs, 8 workers, real T4) failed 64/64 configs this way, and
-    exited 3 ("every config failed") rather than crashing, so the shape of the
-    failure was total-but-quiet.
-
+    `get_device_name` / `get_device_capability` create a CUDA primary context in
+    the calling process.  This runner then forks its workers (fork is what makes
+    the feature matrix shared copy-on-write rather than pickled per worker), and
+    CUDA cannot be re-initialised in a forked child -- a child that inherits a
+    parent's context dies with "Cannot re-initialize CUDA in forked subprocess".
     Probing out-of-process keeps this process CUDA-clean, so each forked child
     creates its own context on first use.  That preserves BOTH the Phase 2
     packing measurement (8 concurrent processes per T4) and copy-on-write
-    sharing of the feature matrix, which `spawn` would have cost us.
+    sharing of the feature matrix, which `spawn` would have cost.
+
+    HISTORY, so the reasoning is not re-litigated: this was first written as the
+    presumed cause of chunk prim_8d24dcf3f154c775 failing 64/64 configs on a real
+    T4.  That hypothesis was WRONG and is recorded here as falsified.  Local
+    reproduction showed the actual cause was the daemonic worker pool (see
+    `_map_nondaemonic`); this out-of-process probe did not fix that chunk.  It is
+    retained because it is independently correct -- forking after CUDA init is a
+    genuine hazard, and `_assert_cuda_clean` enforces the invariant -- not
+    because it explains that failure.
     """
     try:
         proc = subprocess.run(
@@ -170,7 +172,27 @@ def _torch_device_info() -> Dict[str, Any]:
         }
 
 
-def _map_nondaemonic(rows: List[dict], nprocs: int, init_args: tuple) -> List[dict]:
+def _spawn_worker_entry(payload: tuple) -> None:
+    """Module-level worker entry for the SPAWN path (must be importable/picklable).
+
+    A spawned child re-imports this module and receives its state through the
+    pickled payload rather than inheriting it, which is exactly why it is immune
+    to the fork+CUDA hazard: the child has no inherited CUDA context to collide
+    with, and initialises its own cleanly.
+    """
+    q, shard, init_args = payload
+    _init_worker(*init_args)
+    for i, row in shard:
+        try:
+            q.put((i, _fit_one(row)))
+        except Exception as exc:  # pragma: no cover
+            q.put((i, {**row, "status": "error",
+                       "error": f"{type(exc).__name__}: {exc}"}))
+
+
+def _map_nondaemonic(
+    rows: List[dict], nprocs: int, init_args: tuple, use_spawn: bool = False
+) -> List[dict]:
     """Fit `rows` concurrently in NON-DAEMONIC forked workers.
 
     `multiprocessing.Pool` marks its workers **daemonic**, and a daemonic process
@@ -193,17 +215,22 @@ def _map_nondaemonic(rows: List[dict], nprocs: int, init_args: tuple) -> List[di
     Queue; a worker that dies without reporting is recorded as a failed config
     rather than silently dropped, so the row count stays exact.
     """
-    ctx = mp.get_context("fork")
+    # GPU chunks use SPAWN, CPU chunks use FORK.
+    #
+    # Fork is preferable where it works -- the feature matrix is inherited
+    # copy-on-write instead of pickled to every worker, which is the whole point
+    # of grouping configs by feature matrix.  But a forked child cannot use CUDA
+    # if the parent ever initialised it, and on the real T4 this chunk failed
+    # 64/64 with "AcceleratorError: CUDA error: initialization error" even after
+    # the device probe was moved out-of-process -- some import on the parent's
+    # path still creates a context, and chasing which one is not worth another
+    # cloud round-trip when spawn removes the entire failure class.
+    #
+    # Spawn costs one pickle of the feature matrices per worker.  Measured on
+    # this chunk that is ~14.6 MB of cached features across 8 workers -- trivial
+    # against the 70 s the chunk spent failing.
+    ctx = mp.get_context("spawn" if use_spawn else "fork")
     q: Any = ctx.Queue()
-
-    def _worker(idx_rows: List[tuple]) -> None:
-        _init_worker(*init_args)
-        for i, row in idx_rows:
-            try:
-                q.put((i, _fit_one(row)))
-            except Exception as exc:  # pragma: no cover
-                q.put((i, {**row, "status": "error",
-                           "error": f"{type(exc).__name__}: {exc}"}))
 
     # Round-robin the configs so each worker gets a mix of cheap and expensive
     # models rather than one worker inheriting every large one.
@@ -211,10 +238,26 @@ def _map_nondaemonic(rows: List[dict], nprocs: int, init_args: tuple) -> List[di
     for i, row in enumerate(rows):
         shards[i % nprocs].append((i, row))
 
-    procs_list = [
-        ctx.Process(target=_worker, args=(shard,), daemon=False)
-        for shard in shards if shard
-    ]
+    if use_spawn:
+        procs_list = [
+            ctx.Process(target=_spawn_worker_entry,
+                        args=((q, shard, init_args),), daemon=False)
+            for shard in shards if shard
+        ]
+    else:
+        def _worker(idx_rows: List[tuple]) -> None:
+            _init_worker(*init_args)
+            for i, row in idx_rows:
+                try:
+                    q.put((i, _fit_one(row)))
+                except Exception as exc:  # pragma: no cover
+                    q.put((i, {**row, "status": "error",
+                               "error": f"{type(exc).__name__}: {exc}"}))
+
+        procs_list = [
+            ctx.Process(target=_worker, args=(shard,), daemon=False)
+            for shard in shards if shard
+        ]
     for p in procs_list:
         p.start()
 
@@ -620,6 +663,7 @@ def run_chunk(args) -> int:
                 fold_recs = _map_nondaemonic(
                     g_rows, min(procs, len(g_rows)),
                     (Xtr, Xte, ytr, yte, fold, seed, corrective),
+                    use_spawn=bool(dev.get("cuda_available")),
                 )
             records.extend(fold_recs)
             n_err = sum(1 for r in fold_recs if r["status"] != "ok")
