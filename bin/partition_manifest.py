@@ -121,11 +121,20 @@ RF_HEAVY_N_ESTIMATORS = 500
 #: from THESE, not from VRAM: measured peak VRAM is 17-47 MB (0.31 % of a T4)
 #: and is row-count invariant (CNN 17.5 MB at 192 rows, 17.9 MB at 291,551), so
 #: the device is never the binding constraint.  Host RAM is.
-P95_RSS_GB = {"S": 1.6, "M": 1.7, "L": 3.2, "XL": 3.9}
+#: MB/1024 (GiB), matching Nextflow's `memory` units and RNAFM_RSS_GB above.
+#: Measured p95: S 1,589.2 MB -> 1.55, M 1,677.1 -> 1.64, L 3,151.1 -> 3.08,
+#: XL 3,865.5 -> 3.77.
+P95_RSS_GB = {"S": 1.55, "M": 1.64, "L": 3.08, "XL": 3.77}
 
 #: Measured RNA-FM peak RSS by tier (GB): the (n, L, 640) float32 embedding
 #: array is materialised dense.  9.66 GB at 32,602 rows is measured.
-RNAFM_RSS_GB = {"S": 3.5, "M": 8.1, "L": 9.7}
+#: Values are MEASURED MAXIMA from calibration.csv, converted as MB/1024 (GiB),
+#: the same convention Nextflow's `memory` directive uses -- so these numbers can
+#: be compared directly against the task memory request without a unit shim:
+#:   S max 3,483.6 MB -> 3.40   M max 8,014.9 MB -> 7.83   L max 9,664.1 MB -> 9.44
+#: (An earlier revision wrote M as 8.1, which was neither the max in MB/1000 nor
+#: in GiB; the surrounding tier values also mixed the two conventions.)
+RNAFM_RSS_GB = {"S": 3.40, "M": 7.83, "L": 9.44}
 
 #: Usable RAM of the pinned instance sizes, GB.  g4dn.2xlarge and c6id.4xlarge
 #: both advertise 32 GiB; ~1.5 GB is reserved for the ECS agent and the Fusion

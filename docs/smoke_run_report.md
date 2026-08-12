@@ -13,7 +13,14 @@ Workspace: `seqera-poc` (`234253664513050`), us-west-2.
 ## 1. What was launched
 
 Four chunks were selected to span the required axes at ~1 % of the sweep
-(450 fold-fits of 45,940):
+(450 fold-fits of the 45,940 the pipeline will run).
+
+**On the two totals used in this report**, which are different quantities and are
+not interchangeable: the published CSV holds **9,190 configs / 45,950 rows**, and
+the pipeline *runs* **9,188 configs / 45,940 fold-fits** because 2 configs
+(RNA-FM x sherwood) are skipped by default as expected-infeasible and recorded in
+`skips_primary.csv`. Join figures in §5 are against the published 9,190/45,950;
+chunk and workload figures are against the 9,188/45,940 actually executed.
 
 | role | chunk_id | queue | tier | dataset | featurizer | cv | models | configs | fold-fits |
 |---|---|---|---|---|---|---|---|---|---|
@@ -89,8 +96,8 @@ unattributable.
 `prim_8d24dcf3f154c775` (64 CNN/GRU/MLP/Transformer configs, `procs=8`) reported
 `fitted=64 errors=64` on all five folds and exited 3 — the runner's own "every
 config in this chunk failed" code. **It is a pipeline bug, not a config-level or
-data failure**, and it has two distinct causes, both found by reproduction rather
-than inspection:
+data failure**, and it had two sequential causes — the second only became visible
+once the first was fixed:
 
 1. **Daemonic workers.** `multiprocessing.Pool` marks its workers daemonic, and a
    daemonic process may not have children. Every DL model here trains through
@@ -100,10 +107,12 @@ than inspection:
    Fixed by replacing `Pool` with plain non-daemonic `mp.Process` workers.
 2. **CUDA after fork.** With that fixed, the same chunk failed on the T4 with
    `AcceleratorError: CUDA error: initialization error` ×64 — a forked child
-   cannot use CUDA if the parent ever initialised a context. Moving the device
-   probe out-of-process was not sufficient; something else on the parent's import
-   path still creates one. Rather than spend further cloud round-trips isolating
-   which import, **GPU chunks now use the `spawn` start method** (children
+   cannot use CUDA if the parent ever initialised a context. **The specific import
+   that initialises it in the parent was never identified**, so unlike cause 1
+   this diagnosis rests on the error text and on the fix working, not on an
+   isolated reproduction of the mechanism. Moving the device probe out-of-process
+   was not sufficient. Rather than spend further cloud round-trips bisecting
+   imports, **GPU chunks now use the `spawn` start method** (children
    re-import and receive state pickled, so there is no inherited context), while
    **CPU chunks keep `fork`** and its copy-on-write sharing of the feature matrix.
    Cost of spawn is one pickle of the cached matrices per worker — ~14.6 MB for
