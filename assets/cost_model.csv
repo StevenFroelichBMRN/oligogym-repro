@@ -1,0 +1,73 @@
+arm,compute_class,model_class,tier,unit_cost_source,configs,fold_fits,s_per_fold_fit,s_per_fold_fit_p75,device_hours_nocache,device_hours_cached,pack_factor,instance_type,instance_hours,usd_ondemand_list
+corrective,cpu,LinearModel,L,measured,32,160,85.186,94.997,3.786,1.7463,8.0,c6id.4xlarge,0.2183,0.176
+corrective,cpu,LinearModel,S,measured,64,320,0.8249,1.4209,0.0733,0.0338,8.0,c6id.4xlarge,0.0042,0.0034
+corrective,cpu,NearestNeighborsModel,L,measured,48,240,76.3957,89.2878,5.093,2.3492,8.0,c6id.4xlarge,0.2936,0.2368
+corrective,cpu,NearestNeighborsModel,S,measured,96,480,0.9594,1.6691,0.1279,0.059,8.0,c6id.4xlarge,0.0074,0.0059
+corrective,cpu,RNA-FM + LinearModel,L,extrapolated_linear_in_rows,1,5,509.3029,763.9543,0.7074,0.3263,8.0,c6id.4xlarge,0.0408,0.0329
+corrective,cpu,RNA-FM + LinearModel,S,measured,2,10,11.9976,18.3796,0.0333,0.0154,8.0,c6id.4xlarge,0.0019,0.0015
+corrective,cpu,RandomForestModel,L,measured,144,720,195.7051,276.4795,39.141,18.0537,8.0,c6id.4xlarge,2.2567,1.8198
+corrective,cpu,RandomForestModel,S,measured,288,1440,1.7205,2.0469,0.6882,0.3174,8.0,c6id.4xlarge,0.0397,0.032
+corrective,cpu,XGBoostModel,L,measured,144,720,110.8666,130.7435,22.1733,10.2274,8.0,c6id.4xlarge,1.2784,1.0309
+corrective,cpu,XGBoostModel,S,measured,288,1440,1.0363,2.2092,0.4145,0.1912,8.0,c6id.4xlarge,0.0239,0.0193
+corrective,gpu,CNN,L,measured,80,400,285.799,332.0645,31.7554,14.6471,8.0,g4dn.2xlarge,1.8309,1.3768
+corrective,gpu,CNN,S,measured,160,800,4.0044,6.4744,0.8899,0.4104,8.0,g4dn.2xlarge,0.0513,0.0386
+corrective,gpu,GNN,L,measured,24,120,484.8154,529.9069,16.1605,7.454,8.0,g4dn.2xlarge,0.9318,0.7007
+corrective,gpu,GNN,S,measured,48,240,4.5958,6.178,0.3064,0.1413,8.0,g4dn.2xlarge,0.0177,0.0133
+corrective,gpu,GRU,L,measured,16,80,224.8392,243.7551,4.9964,2.3046,8.0,g4dn.2xlarge,0.2881,0.2166
+corrective,gpu,GRU,S,measured,32,160,3.4337,4.5496,0.1526,0.0704,8.0,g4dn.2xlarge,0.0088,0.0066
+corrective,gpu,MLP,L,measured,128,640,241.3378,262.4421,42.9045,19.7896,8.0,g4dn.2xlarge,2.4737,1.8602
+corrective,gpu,MLP,S,measured,256,1280,2.6722,3.6026,0.9501,0.4382,8.0,g4dn.2xlarge,0.0548,0.0412
+corrective,gpu,RNA-FM + CNN,L,measured,1,5,339.5779,367.8035,0.4716,0.2175,1.0,g4dn.2xlarge,0.2175,0.1636
+corrective,gpu,RNA-FM + CNN,S,measured,2,10,4.306,4.6672,0.012,0.0055,1.0,g4dn.2xlarge,0.0055,0.0041
+corrective,gpu,RNA-FM + Transformer,L,measured,32,160,200.2812,261.1544,8.9014,4.1057,1.0,g4dn.2xlarge,4.1057,3.0875
+corrective,gpu,RNA-FM + Transformer,S,measured,64,320,5.0859,6.4173,0.4521,0.2085,1.0,g4dn.2xlarge,0.2085,0.1568
+corrective,gpu,Transformer,L,measured,128,640,211.7167,234.4417,37.6385,17.3607,8.0,g4dn.2xlarge,2.1701,1.6319
+corrective,gpu,Transformer,S,measured,256,1280,4.2599,5.2214,1.5146,0.6986,8.0,g4dn.2xlarge,0.0873,0.0657
+primary,cpu,LinearModel,L,measured,96,480,85.186,94.997,11.3581,5.2389,8.0,c6id.4xlarge,0.6549,0.5281
+primary,cpu,LinearModel,M,measured,96,480,12.2353,13.7307,1.6314,0.7525,8.0,c6id.4xlarge,0.0941,0.0758
+primary,cpu,LinearModel,S,measured,160,800,0.8249,1.4209,0.1833,0.0846,8.0,c6id.4xlarge,0.0106,0.0085
+primary,cpu,LinearModel,XL,extrapolated_from_L_via_measured_XL_over_L_ratio,32,160,358.2795,537.4192,15.9235,7.3447,8.0,c6id.4xlarge,0.9181,0.7403
+primary,cpu,NearestNeighborsModel,L,measured,144,720,76.3957,89.2878,15.2791,7.0475,8.0,c6id.4xlarge,0.8809,0.7104
+primary,cpu,NearestNeighborsModel,M,measured,144,720,8.8722,9.5198,1.7744,0.8185,8.0,c6id.4xlarge,0.1023,0.0825
+primary,cpu,NearestNeighborsModel,S,measured,240,1200,0.9594,1.6691,0.3198,0.1475,8.0,c6id.4xlarge,0.0184,0.0149
+primary,cpu,NearestNeighborsModel,XL,extrapolated_from_L_via_measured_XL_over_L_ratio,48,240,321.3091,481.9637,21.4206,9.8802,8.0,c6id.4xlarge,1.235,0.9959
+primary,cpu,RNA-FM + LinearModel,L,extrapolated_linear_in_rows,3,15,509.3029,763.9543,2.1221,0.9788,8.0,c6id.4xlarge,0.1224,0.0987
+primary,cpu,RNA-FM + LinearModel,M,extrapolated_linear_in_rows,3,15,37.9767,56.965,0.1582,0.073,8.0,c6id.4xlarge,0.0091,0.0074
+primary,cpu,RNA-FM + LinearModel,S,measured,5,25,11.9976,18.3796,0.0833,0.0384,8.0,c6id.4xlarge,0.0048,0.0039
+primary,cpu,RNA-FM + LinearModel,XL,extrapolated_linear_in_rows,1,5,4554.5598,6831.8396,6.3258,2.9178,8.0,c6id.4xlarge,0.3647,0.2941
+primary,cpu,RandomForestModel,L,measured,432,2160,195.7051,276.4795,117.4231,54.1612,8.0,c6id.4xlarge,6.7701,5.4594
+primary,cpu,RandomForestModel,M,measured,432,2160,14.8105,21.9186,8.8863,4.0988,8.0,c6id.4xlarge,0.5123,0.4132
+primary,cpu,RandomForestModel,S,measured,720,3600,1.7205,2.0469,1.7205,0.7936,8.0,c6id.4xlarge,0.0992,0.08
+primary,cpu,RandomForestModel,XL,extrapolated_from_L_via_measured_XL_over_L_ratio,144,720,823.1067,1234.66,164.6213,75.9313,8.0,c6id.4xlarge,9.4914,7.6539
+primary,cpu,XGBoostModel,L,measured,432,2160,110.8666,130.7435,66.5199,30.6822,8.0,c6id.4xlarge,3.8353,3.0928
+primary,cpu,XGBoostModel,M,measured,432,2160,10.6303,12.6608,6.3782,2.9419,8.0,c6id.4xlarge,0.3677,0.2965
+primary,cpu,XGBoostModel,S,measured,720,3600,1.0363,2.2092,1.0363,0.478,8.0,c6id.4xlarge,0.0598,0.0482
+primary,cpu,XGBoostModel,XL,measured,144,720,492.9868,517.4547,98.5974,45.4778,8.0,c6id.4xlarge,5.6847,4.5842
+primary,gpu,CNN,L,measured,240,1200,285.799,332.0645,95.2663,43.9414,8.0,g4dn.2xlarge,5.4927,4.1305
+primary,gpu,CNN,M,measured,240,1200,27.4611,30.849,9.1537,4.2221,8.0,g4dn.2xlarge,0.5278,0.3969
+primary,gpu,CNN,S,measured,397,1985,4.0044,6.4744,2.208,1.0184,8.0,g4dn.2xlarge,0.1273,0.0957
+primary,gpu,CNN,XL,measured,80,400,995.775,1046.0021,110.6417,51.0332,8.0,g4dn.2xlarge,6.3792,4.7971
+primary,gpu,GNN,L,measured,72,360,484.8154,529.9069,48.4815,22.362,8.0,g4dn.2xlarge,2.7953,2.102
+primary,gpu,GNN,M,measured,72,360,47.0215,49.3923,4.7021,2.1689,8.0,g4dn.2xlarge,0.2711,0.2039
+primary,gpu,GNN,S,measured,120,600,4.5958,6.178,0.766,0.3533,8.0,g4dn.2xlarge,0.0442,0.0332
+primary,gpu,GNN,XL,extrapolated_from_L_via_measured_XL_over_L_ratio,24,120,2039.0617,3058.5925,67.9687,31.3504,8.0,g4dn.2xlarge,3.9188,2.9469
+primary,gpu,GRU,L,measured,48,240,224.8392,243.7551,14.9893,6.9138,8.0,g4dn.2xlarge,0.8642,0.6499
+primary,gpu,GRU,M,measured,48,240,26.0494,30.6907,1.7366,0.801,8.0,g4dn.2xlarge,0.1001,0.0753
+primary,gpu,GRU,S,measured,80,400,3.4337,4.5496,0.3815,0.176,8.0,g4dn.2xlarge,0.022,0.0165
+primary,gpu,GRU,XL,measured,4,20,1054.8005,1064.5342,5.86,2.7029,8.0,g4dn.2xlarge,0.3379,0.2541
+primary,gpu,MLP,L,measured,384,1920,241.3378,262.4421,128.7135,59.3688,8.0,g4dn.2xlarge,7.4211,5.5807
+primary,gpu,MLP,M,measured,384,1920,18.222,20.7997,9.7184,4.4826,8.0,g4dn.2xlarge,0.5603,0.4214
+primary,gpu,MLP,S,measured,640,3200,2.6722,3.6026,2.3753,1.0956,8.0,g4dn.2xlarge,0.137,0.103
+primary,gpu,MLP,XL,measured,128,640,956.9127,1136.0472,170.1178,78.4665,8.0,g4dn.2xlarge,9.8083,7.3759
+primary,gpu,RNA-FM + CNN,L,measured,3,15,339.5779,367.8035,1.4149,0.6526,1.0,g4dn.2xlarge,0.6526,0.4908
+primary,gpu,RNA-FM + CNN,M,measured,3,15,20.2329,21.337,0.0843,0.0389,1.0,g4dn.2xlarge,0.0389,0.0292
+primary,gpu,RNA-FM + CNN,S,measured,5,25,4.306,4.6672,0.0299,0.0138,1.0,g4dn.2xlarge,0.0138,0.0104
+primary,gpu,RNA-FM + CNN,XL,extrapolated_from_L_via_measured_XL_over_L_ratio,1,5,1428.2141,2142.3212,1.9836,0.9149,1.0,g4dn.2xlarge,0.9149,0.688
+primary,gpu,RNA-FM + Transformer,L,measured,80,400,200.2812,261.1544,22.2535,10.2644,1.0,g4dn.2xlarge,10.2644,7.7188
+primary,gpu,RNA-FM + Transformer,M,measured,96,480,26.8292,27.3351,3.5772,1.65,1.0,g4dn.2xlarge,1.65,1.2408
+primary,gpu,RNA-FM + Transformer,S,measured,160,800,5.0859,6.4173,1.1302,0.5213,1.0,g4dn.2xlarge,0.5213,0.392
+primary,gpu,Transformer,L,measured,327,1635,211.7167,234.4417,96.1547,44.3511,8.0,g4dn.2xlarge,5.5439,4.169
+primary,gpu,Transformer,M,measured,384,1920,18.9253,24.3523,10.0935,4.6556,8.0,g4dn.2xlarge,0.582,0.4376
+primary,gpu,Transformer,S,measured,640,3200,4.2599,5.2214,3.7866,1.7466,8.0,g4dn.2xlarge,0.2183,0.1642
+primary,gpu,Transformer,XL,extrapolated_from_L_via_measured_XL_over_L_ratio,102,510,890.4488,1335.6732,126.1469,58.185,8.0,g4dn.2xlarge,7.2731,5.4694
+TOTAL both arms,cpu+gpu,ALL,ALL,mixed,11524,57620,,,1700.8428,784.5103,,mixed,114.3329,87.9041
