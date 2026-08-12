@@ -77,68 +77,13 @@ params.image_digest = 'ghcr.io/stevenfroelichbmrn/oligogym-bench@sha256:c1bb023c
 params.git_sha      = 'unset'
 params.upstream_sha = '97f5b9f58d9e445a8ecb0218037af7465c3708c0'
 
-// Output prefix and the shared chunk command line live in params/closures rather
-// than top-level statements: Nextflow >=25 rejects statements mixed with script
-// declarations, and a closure in params is visible to every process body.
+// Output prefix is a param so process bodies can interpolate it.  The shared
+// chunk command line lives in modules/local/chunk_script.nf -- NOT in params:
+// Seqera serializes every param into the run record and a closure there aborts
+// the head job ("Unable to serialize key=workflow.params.chunk_script").
 params.results_prefix = "${params.outdir}/${params.version}/${params.arm}"
 
-/*
- * The chunk command line, shared verbatim by the CPU and GPU processes so the
- * two queues cannot drift apart in behaviour.  The only differences between them
- * are the resource label and --require-cuda.
- */
-params.chunk_script = { meta, chunk_json, configs_csv, task, require_cuda ->
-    def seed_flag  = params.seed != null ? "--seed ${params.seed}" : ''
-    def kfold_flag = params.proper_kfold ? '--proper-kfold' : ''
-    def cuda_flag  = require_cuda ? '--require-cuda' : ''
-    """
-    set -euo pipefail
-
-    # Thread caps: a chunk runs ${meta.procs} fold-fits concurrently, so an
-    # unconstrained BLAS would oversubscribe the box ${meta.procs}-fold.  One
-    # thread per worker is what the Phase 2 packing measurement was made under.
-    export OMP_NUM_THREADS=1
-    export MKL_NUM_THREADS=1
-    export OPENBLAS_NUM_THREADS=1
-    export NUMEXPR_NUM_THREADS=1
-
-    # Provenance, written into every output row rather than inferred later.
-    export OLIGOGYM_IMAGE_DIGEST='${params.image_digest}'
-    export OLIGOGYM_GIT_SHA='${params.git_sha}'
-    export OLIGOGYM_UPSTREAM_SHA='${params.upstream_sha}'
-
-    # The RNA-FM checkpoint is baked into the image under this TORCH_HOME, so
-    # fm.pretrained.rna_fm_t12() loads from cache; its canonical host returns
-    # 403 and a 1.2 GB fetch per container start would be wasteful.
-    export TORCH_HOME=\${TORCH_HOME:-/opt/torch-hub}
-
-    LOG='${meta.chunk_id}.log'
-    {
-      echo "[task] chunk=${meta.chunk_id} arm=${params.arm} queue=${meta.queue}"
-      echo "[task] tier=${meta.tier} mem_class=${meta.mem_class} procs=${meta.procs}"
-      echo "[task] n_configs=${meta.n_configs} est_minutes=${meta.est_min}"
-      echo "[task] attempt=${task.attempt} cpus=${task.cpus} memory=${task.memory}"
-      echo "[task] hostname=\$(hostname) uname=\$(uname -srm)"
-      echo "[task] FUSION_GPU_USED=\${FUSION_GPU_USED:-unset}"
-      nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader \\
-        || echo "[task] nvidia-smi unavailable"
-    } >> "\$LOG" 2>&1
-
-    run_chunk.py \\
-        --chunk ${chunk_json} \\
-        --configs ${configs_csv} \\
-        --out '${meta.chunk_id}.parquet' \\
-        --summary '${meta.chunk_id}_summary.json' \\
-        --fold-indices '${meta.chunk_id}_folds.csv' \\
-        --cache-dir "./feature_cache_${meta.chunk_id}" \\
-        --procs ${meta.procs} \\
-        --arm ${params.arm} \\
-        ${seed_flag} ${kfold_flag} ${cuda_flag} \\
-        >> "\$LOG" 2>&1
-
-    echo "[task] done rc=0" >> "\$LOG"
-    """
-}
+include { chunkScript } from './modules/local/chunk_script.nf'
 
 // ==========================================================================
 process PARTITION {
@@ -195,7 +140,7 @@ process RUN_CHUNK_CPU {
     path "${meta.chunk_id}.log",                            emit: logs,      optional: true
 
     script:
-    params.chunk_script(meta, chunk_json, configs_csv, task, false)
+    chunkScript(meta, chunk_json, configs_csv, task, false, params)
 }
 
 process RUN_CHUNK_GPU {
@@ -216,7 +161,7 @@ process RUN_CHUNK_GPU {
     path "${meta.chunk_id}.log",                            emit: logs,      optional: true
 
     script:
-    params.chunk_script(meta, chunk_json, configs_csv, task, true)
+    chunkScript(meta, chunk_json, configs_csv, task, true, params)
 }
 
 process COLLECT {
