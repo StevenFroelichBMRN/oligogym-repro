@@ -73,7 +73,11 @@ params.version      = 'v1'
 params.publish_mode = 'copy'
 
 // ---- provenance ----------------------------------------------------------
-params.image_digest = 'ghcr.io/stevenfroelichbmrn/oligogym-bench@sha256:c1bb023c3c5f317e1b071b97af0e0d5608d571bbaf541172b689bab7333ab8a8'
+// The digest this pipeline EXPECTS to be running (recorded into every output
+// row).  It is not a pull-time pin: Wave rejects a SHA256 tag alongside Fusion's
+// containerConfig, so the container reference in nextflow.config is a tag.  See
+// the params block there for the full reasoning and the residual risk.
+params.image_digest = 'sha256:c1bb023c3c5f317e1b071b97af0e0d5608d571bbaf541172b689bab7333ab8a8'
 params.git_sha      = 'unset'
 params.upstream_sha = '97f5b9f58d9e445a8ecb0218037af7465c3708c0'
 
