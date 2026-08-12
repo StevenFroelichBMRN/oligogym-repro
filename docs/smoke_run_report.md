@@ -56,8 +56,7 @@ both memory classes of interest (`rnafm16`, `xl_tree_hi`).
 | `prim_4163cf3ef1fc0327` (XL sherwood) | COMPLETED | c6id.24xlarge | 3,967 s | 7,447.4 MB | n/a |
 | `prim_8d24dcf3f154c775` (gpu DL) | **COMPLETED** after fix | g4dn.2xlarge | **895 s** | **14,251.6 MB** | `Tesla T4`, `fitted=64 errors=0` × 5 folds |
 
-The GPU DL chunk — 64 CNN/GRU/MLP/Transformer configs at `procs=8`, the shape
-that 111 of 175 primary chunks share — completed **320/320 fold-fits with zero
+The GPU DL chunk — 64 CNN/GRU/MLP/Transformer configs at `procs=8` — completed **320/320 fold-fits with zero
 errors** on a Tesla T4 after the §4 fixes (`56f9n797FOE8GW`). Its task peaked at
 **14,251.6 MB RSS against a 12 GB request**, i.e. it exceeded its own memory
 declaration and was placed only because Batch chose a much larger instance. See
@@ -90,6 +89,13 @@ problem Phase 2 flagged. The pipeline requests 8 cpus and a memory ladder, which
 constrains but does not pin. **Phase 4 should pin sizes in the compute
 environments themselves before the sweep**, or per-chunk unit costs will again be
 unattributable.
+
+**How representative is that one GPU chunk?** Of the 175 primary chunks, 111 are
+GPU-queue and **93 are multi-worker GPU** (`procs=8`: 66, `procs=7`: 27; the
+other 18 are RNA-FM at `procs=1`), covering 4,414 configs. The tested chunk is
+one of the **20** multi-worker GPU chunks at the **M** tier. The 44 L-tier and 27
+XL-tier multi-worker GPU chunks have **not** been exercised, and under `spawn`
+their per-worker matrix copies are larger — see §7 item 1.
 
 ## 4. The exit-3 chunk — root cause
 
