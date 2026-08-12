@@ -170,6 +170,86 @@ def _torch_device_info() -> Dict[str, Any]:
         }
 
 
+def _map_nondaemonic(rows: List[dict], nprocs: int, init_args: tuple) -> List[dict]:
+    """Fit `rows` concurrently in NON-DAEMONIC forked workers.
+
+    `multiprocessing.Pool` marks its workers **daemonic**, and a daemonic process
+    is forbidden from having children:
+
+        AssertionError: daemonic processes are not allowed to have children
+
+    Every DL model here trains through `pl.Trainer`, which starts child processes
+    (DataLoader workers / Lightning's launcher), so under `Pool` *every* DL config
+    fails.  Measured live on a real T4: chunk prim_8d24dcf3f154c775 (64
+    CNN/GRU/MLP/Transformer configs, procs=8) reported `fitted=64 errors=64` on
+    all five folds and exited 3, while the RNA-FM chunk in the same wave
+    (procs=1, no pool) completed normally — the tell that the pool, not the GPU,
+    was the problem.
+
+    Plain `mp.Process` children are non-daemonic by default, so they may spawn
+    their own children.  Fork is retained deliberately: the feature matrix is
+    inherited copy-on-write rather than pickled to each worker, which is the
+    whole point of grouping configs by feature matrix.  Results come back over a
+    Queue; a worker that dies without reporting is recorded as a failed config
+    rather than silently dropped, so the row count stays exact.
+    """
+    ctx = mp.get_context("fork")
+    q: Any = ctx.Queue()
+
+    def _worker(idx_rows: List[tuple]) -> None:
+        _init_worker(*init_args)
+        for i, row in idx_rows:
+            try:
+                q.put((i, _fit_one(row)))
+            except Exception as exc:  # pragma: no cover
+                q.put((i, {**row, "status": "error",
+                           "error": f"{type(exc).__name__}: {exc}"}))
+
+    # Round-robin the configs so each worker gets a mix of cheap and expensive
+    # models rather than one worker inheriting every large one.
+    shards: List[List[tuple]] = [[] for _ in range(nprocs)]
+    for i, row in enumerate(rows):
+        shards[i % nprocs].append((i, row))
+
+    procs_list = [
+        ctx.Process(target=_worker, args=(shard,), daemon=False)
+        for shard in shards if shard
+    ]
+    for p in procs_list:
+        p.start()
+
+    out: Dict[int, dict] = {}
+    # Drain while workers run: a full Queue pipe would otherwise deadlock a
+    # worker in put() and the join() below would never return.
+    while len(out) < len(rows) and any(p.is_alive() for p in procs_list):
+        try:
+            i, rec = q.get(timeout=5)
+            out[i] = rec
+        except Exception:
+            continue
+    for p in procs_list:
+        p.join(timeout=60)
+    while len(out) < len(rows):
+        try:
+            i, rec = q.get_nowait()
+            out[i] = rec
+        except Exception:
+            break
+
+    recs: List[dict] = []
+    for i, row in enumerate(rows):
+        if i in out:
+            recs.append(out[i])
+        else:
+            # A worker died without reporting (OOM kill, segfault).  Record it as
+            # a failed config so the parquet's row count still matches the chunk.
+            recs.append({
+                **row, "status": "error",
+                "error": "worker died without reporting (possible OOM or crash)",
+            })
+    return recs
+
+
 def _assert_cuda_clean(procs: int) -> None:
     """Refuse to fork a pool if this process already holds a CUDA context.
 
@@ -537,15 +617,25 @@ def run_chunk(args) -> int:
                 fold_recs = [_fit_one(r) for r in g_rows]
             else:
                 _assert_cuda_clean(procs)
-                ctx = mp.get_context("fork")
-                with ctx.Pool(
-                    processes=min(procs, len(g_rows)),
-                    initializer=_init_worker,
-                    initargs=(Xtr, Xte, ytr, yte, fold, seed, corrective),
-                ) as pool:
-                    fold_recs = pool.map(_fit_one, g_rows, chunksize=1)
+                fold_recs = _map_nondaemonic(
+                    g_rows, min(procs, len(g_rows)),
+                    (Xtr, Xte, ytr, yte, fold, seed, corrective),
+                )
             records.extend(fold_recs)
             n_err = sum(1 for r in fold_recs if r["status"] != "ok")
+            if n_err:
+                # Print the DISTINCT error signatures. Without this the only copy
+                # of the reason lives in the parquet's `error` column, which is
+                # not published when a task fails -- measured cost: three API
+                # round-trips to diagnose one broken chunk.
+                sigs: Dict[str, int] = {}
+                for r in fold_recs:
+                    if r["status"] != "ok":
+                        sigs[str(r.get("error"))[:300]] = (
+                            sigs.get(str(r.get("error"))[:300], 0) + 1
+                        )
+                for sig, cnt in sorted(sigs.items(), key=lambda kv: -kv[1])[:5]:
+                    print(f"[error x{cnt}] {sig}", flush=True)
             print(
                 f"[{gid} fold {fold}] fitted={len(fold_recs)} errors={n_err}",
                 flush=True,
